@@ -44,7 +44,7 @@ class TemplateContext:
                         logger.error(f"Error loading template {template_id}: {str(e)}")
                         continue
             
-            logger.info(f"Loaded {len(self.templates)} templates")
+            # logger.info(f"Loaded {len(self.templates)} templates")
             
         except Exception as e:
             logger.error(f"Error loading templates: {str(e)}")
@@ -109,7 +109,7 @@ class TemplateContext:
             # Update the in-memory templates
             self.templates[template_id] = template_data
             
-            logger.info(f"Saved template with ID: {template_id}")
+            # logger.info(f"Saved template with ID: {template_id}")
             return True
             
         except Exception as e:
@@ -134,7 +134,7 @@ class TemplateContext:
                 if template_id in self.templates:
                     del self.templates[template_id]
                     
-                logger.info(f"Deleted template with ID: {template_id}")
+                # logger.info(f"Deleted template with ID: {template_id}")
                 return True
                 
             logger.error(f"Template with ID {template_id} not found")

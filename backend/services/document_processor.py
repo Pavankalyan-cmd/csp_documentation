@@ -154,7 +154,7 @@ class DocumentProcessor:
                         folder_path = folder_path.split(':/')[0]  # Remove any :/children or similar
                         folder_path = folder_path.rstrip('/')
                         
-                        logger.info(f"Extracted folder path: {folder_path}")
+                        # logger.info(f"Extracted folder path: {folder_path}")
                         
                         # Use the SharePoint service to get files from the specific folder
                         files = self.sharepoint_service.get_files(folder_path)
@@ -211,7 +211,7 @@ class DocumentProcessor:
                 for _ in range(4):  # 4 worker threads
                     worker = threading.Thread(
                         target=self._process_document_worker,
-                        args=(template_id,model_id)
+                        args=(template_id,model_id,)
                     )
                     worker.start()
                     workers.append(worker)
@@ -237,6 +237,7 @@ class DocumentProcessor:
                         failed_documents.append(result)
                 
                 processing_time = time.time() - start_time
+
                 logger.info(f"Processed {len(all_metadata)} documents in {processing_time:.2f} seconds")
                 
             else:
@@ -256,6 +257,7 @@ class DocumentProcessor:
         """
         while True:
             file = self.document_queue.get()
+
             if file is None:
                 break
                 
@@ -268,16 +270,21 @@ class DocumentProcessor:
                 self.download_document(file['url'], temp_file_path)
                 
                 # Extract text
-                text = self.extract_text(temp_file_path)
+                text = self.extract_text(temp_file_path,file['name'])
                 
                 # Count tokens
                 text_tokens = self._count_tokens(text)
                 with self.token_lock:
                     self._update_token_tracking(text_tokens)
+
                 
                 # Generate prompt
                 template = self.template_context.get_template(template_id)
                 fields = template.get('metadataFields', [])
+                fields = [{'name': 'filename', 'description': f'Known file name: {file["name"]}'}] + fields       
+
+
+           
                 prompt = self._generate_prompt(text, fields)
                 
                 # Count prompt tokens
@@ -288,8 +295,10 @@ class DocumentProcessor:
                 # Get metadata from Gemini
                 # response = self.gemini_model.generate_content(prompt)
                 # logging.info(f"Gemini response: {response.text}")
+                logger.info(f"Sending file '{file['name']}' to LLM")
+
                 response=chat_with_openrouter(prompt,model_id)  # Call OpenRouter for logging purposes
-                logging.info(f"OpenRouter response: {response}")
+                # logging.info(f"Received response response from LLM {response}")
                 
                 # Count response tokens
                 response_tokens = self._count_tokens(response)
@@ -298,6 +307,11 @@ class DocumentProcessor:
                 
                 # Parse response
                 metadata = self._parse_response(response)
+                try:
+                    metadata['Document URL'] = file.get('url')
+                    metadata['File Name'] = file.get('name', os.path.basename(file.get('url', '')))
+                except Exception:
+                    pass
                 
                 # Add token statistics
                 metadata['token_statistics'] = {
@@ -306,6 +320,7 @@ class DocumentProcessor:
                     'response_tokens': response_tokens,
                     'total_tokens': text_tokens + prompt_tokens + response_tokens
                 }
+                
                 
                 # Update document count
                 with self.token_lock:
@@ -357,7 +372,7 @@ class DocumentProcessor:
             logger.error(f"Error downloading document: {str(e)}")
             raise
 
-    def extract_text(self, file_path: str) -> str:
+    def extract_text(self, file_path: str, original_name: str = None) -> str:
         """
         Extract text from a PDF file.
         """
@@ -377,12 +392,14 @@ class DocumentProcessor:
             if not text.strip():
                 raise ValueError("No text could be extracted from the PDF")
                 
-            return text
+            filename = original_name
+            logger.info(f"Extracted text from document: {filename }")
+            return f"filename: {filename}\n\n{text}"
         except Exception as e:
             logger.error(f"Failed to extract text from document: {str(e)}")
             raise
 
-    def _generate_prompt(self, text: str, fields: List[Dict]) -> str:
+    def _generate_prompt(self, text: str, fields: List[Dict],) -> str:
         """
         Generate a prompt for the LLM to extract specific fields from the text.
         
@@ -466,6 +483,7 @@ Text to analyze:
 Return the results in JSON format with the field names as keys and the extracted values as values.
 Example format:
 {{
+  "filename": "exact and extract filename from given text  ( example:product-information_en.pdf)",
   "Study Title": "Exact title from text",
   "Study Phase": "Phase value from text",
   "Study Type": "Type value from text",
@@ -537,66 +555,61 @@ CRITICAL INSTRUCTIONS:
 28. Look for information in any way it might be presented
 29. Consider all possible variations and forms
 30. Extract all relevant information found
+31. Include filename  and extract filename from given text
 """
         return prompt
 
     def _parse_response(self, response: str) -> dict:
         """Parse the Gemini response into a dictionary."""
-        logging.info(f"before Parsing response: {response}")
         try:
             # Clean the response string
             response = response.strip()
-            
-            # Try to parse as JSON directly
+
+            def clean_dict(data: dict, raw_response: str) -> dict:
+                """Helper to clean values in parsed dict safely."""
+                cleaned = {}
+                for key, value in data.items():
+                    if isinstance(value, str):
+                        if value.strip() and value.lower() != "not found":
+                            cleaned[key] = value.strip()
+                        else:
+                            partial_matches = self._find_partial_matches(key, raw_response)
+                            cleaned[key] = partial_matches if partial_matches else "Not found"
+                    elif isinstance(value, (list, dict)):
+                        # Keep lists and dicts as-is
+                        cleaned[key] = value
+                    elif value is not None:
+                        # Numbers, booleans, etc.
+                        cleaned[key] = value
+                    else:
+                        partial_matches = self._find_partial_matches(key, raw_response)
+                        cleaned[key] = partial_matches if partial_matches else "Not found"
+                return cleaned
+
+            # 1. Try to parse as JSON directly
             try:
                 data = json.loads(response)
                 if isinstance(data, dict):
-                    # Clean up the data
-                    logging.info(f"Data before cleaning: {data}")
-
-                    cleaned_data = {}
-                    for key, value in data.items():
-                        if value and value.lower() != "not found":
-                            cleaned_data[key] = value
-                        else:
-                            # Try to find partial matches in the original text
-                            partial_matches = self._find_partial_matches(key, response)
-                            if partial_matches:
-                                cleaned_data[key] = partial_matches
-                            else:
-                                cleaned_data[key] = "Not found"
-                    logging.info(f"Cleaned data: {cleaned_data}")            
+                    cleaned_data = clean_dict(data, response)
+                    # logging.info(f"Cleaned data: {cleaned_data}")
                     return cleaned_data
             except json.JSONDecodeError:
                 pass
-            
-            # If direct JSON parsing fails, try to extract JSON from the response
+
+            # 2. If direct JSON fails, extract JSON substring
             start_idx = response.find('{')
             end_idx = response.rfind('}')
-            
             if start_idx != -1 and end_idx != -1:
                 json_str = response[start_idx:end_idx + 1]
                 try:
                     data = json.loads(json_str)
                     if isinstance(data, dict):
-                        # Clean up the data
-                        cleaned_data = {}
-                        for key, value in data.items():
-                            if value and value.lower() != "not found":
-                                cleaned_data[key] = value
-                            else:
-                                # Try to find partial matches in the original text
-                                partial_matches = self._find_partial_matches(key, response)
-                                if partial_matches:
-                                    cleaned_data[key] = partial_matches
-                                else:
-                                    cleaned_data[key] = "Not found"
-                        logging.info(f"Cleaned data if json failed : {cleaned_data}")             
+                        cleaned_data = clean_dict(data, response)
                         return cleaned_data
                 except json.JSONDecodeError:
                     pass
-            
-            # If still no valid JSON, try to parse manually
+
+            # 3. Manual parsing (fallback)
             metadata = {}
             lines = response.split('\n')
             for line in lines:
@@ -606,26 +619,21 @@ CRITICAL INSTRUCTIONS:
                         key, value = line.split(':', 1)
                         key = key.strip().strip('"\'')
                         value = value.strip().strip('"\'')
-                        if key and value:  # Only add non-empty key-value pairs
+                        if key and value:
                             if value.lower() != "not found":
                                 metadata[key] = value
                             else:
-                                # Try to find partial matches in the original text
                                 partial_matches = self._find_partial_matches(key, response)
-                                if partial_matches:
-                                    metadata[key] = partial_matches
-                                else:
-                                    metadata[key] = "Not found"
-                    except:
+                                metadata[key] = partial_matches if partial_matches else "Not found"
+                    except Exception:
                         continue
-            
+
             return metadata
-            
+
         except Exception as e:
             logger.error(f"Error parsing response: {str(e)}")
             logger.error(f"Original response: {response}")
-            return {}  # Return empty dict instead of raising error
-
+            return {}
     def _find_partial_matches(self, field_name: str, text: str) -> str:
         """Find partial matches for a field in the text."""
         try:

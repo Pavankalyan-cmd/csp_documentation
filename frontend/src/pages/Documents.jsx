@@ -30,6 +30,7 @@ const slideIn = {
 };
 
 function Documents() {
+  const hasLoadedMetadataRef = useRef(false);
   const { templates } = useTemplates();
   const { startLoading, stopLoading, updateProgress, progress, loadingMessage, setProgress, elapsedTime } = useLoading();
   const [documentUrl, setDocumentUrl] = useState('');
@@ -64,8 +65,12 @@ function Documents() {
   const [tokenStats, setTokenStats] = useState(null);
   const [showTokenStats, setShowTokenStats] = useState(false);
 
+  const hasProcessedRef = useRef(false);
+
   // Load metadata from backend on component mount
   useEffect(() => {
+    if (hasLoadedMetadataRef.current) return;
+    hasLoadedMetadataRef.current = true;
     const loadMetadata = async () => {
       try {
         const response = await fetch(`${url}/metadata`);
@@ -205,8 +210,11 @@ const models = [
   };
 
   const handleProcessDocument = async () => {
+    if (hasProcessedRef.current) return; 
+    hasProcessedRef.current = true;
     if (!selectedTemplateId || !documentUrl ) {
       alert('Please select a template and enter a document URL');
+      hasProcessedRef.current = false;
       return;
     }
 
@@ -301,13 +309,13 @@ const models = [
       setProcessingComplete(true);
       setTimerActive(false);
     } finally {
-
       // Set the end time
       setProcessTime((prev) => ({
         ...prev,
         end: new Date().toISOString().toLocaleString(),
       }));
 
+      hasProcessedRef.current = false;
       setTimeout(() => {
         stopLoading();
         setCurrentStage('');

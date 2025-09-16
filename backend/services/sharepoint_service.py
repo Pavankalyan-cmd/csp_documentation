@@ -53,7 +53,7 @@ class SharePointService:
             try:
                 credentials = ClientCredential(self.client_id, self.client_secret)
                 self.client = ClientContext(self.site_url).with_credentials(credentials)
-                logger.info("SharePoint client initialized successfully")
+                # logger.info("SharePoint client initialized successfully")
             except Exception as e:
                 logger.error(f"Error initializing SharePoint client: {str(e)}")
                 raise
@@ -118,7 +118,7 @@ class SharePointService:
                 
             # Get the site ID
             site_id = sites[0]['id']
-            logger.info(f"Found site ID: {site_id}")
+            # logger.info(f"Found site ID: {site_id}")
             return site_id
             
         except Exception as e:
@@ -204,7 +204,7 @@ class SharePointService:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
             
-            logger.info(f"File downloaded successfully: {local_path}")
+            # logger.info(f"File downloaded successfully: {local_path}")
             return local_path
             
         except Exception as e:
@@ -328,8 +328,8 @@ class SharePointService:
             site_id = self._get_site_id()
             
             # Log the upload attempt
-            logger.info(f"Attempting to upload file '{file_name}' to folder '{folder_path}'")
-            logger.info(f"File size: {len(file_content)} bytes")
+            # logger.info(f"Attempting to upload file '{file_name}' to folder '{folder_path}'")
+            # logger.info(f"File size: {len(file_content)} bytes")
             
             headers = {
                 'Authorization': f'Bearer {access_token}',
@@ -338,14 +338,14 @@ class SharePointService:
             
             # Construct the upload URL
             upload_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/drive/root:/{folder_path}/{file_name}:/content"
-            logger.info(f"Upload URL: {upload_url}")
+            # logger.info(f"Upload URL: {upload_url}")
             
             # Upload the file
             response = requests.put(upload_url, headers=headers, data=file_content)
             
             # Log response details
-            logger.info(f"Upload response status: {response.status_code}")
-            logger.info(f"Upload response headers: {response.headers}")
+            # logger.info(f"Upload response status: {response.status_code}")
+            # logger.info(f"Upload response headers: {response.headers}")
             
             # Check response status
             if response.status_code == 201 or response.status_code == 200:
@@ -354,7 +354,7 @@ class SharePointService:
                 file_url = file_data.get('webUrl')
                 
                 if file_url:
-                    logger.info(f"File uploaded successfully to SharePoint: {file_url}")
+                    # logger.info(f"File uploaded successfully to SharePoint: {file_url}")
                     return file_url
                 else:
                     error_msg = "No webUrl in response"

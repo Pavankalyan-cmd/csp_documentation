@@ -17,7 +17,7 @@ class MetadataStorage:
             if os.path.exists(self.storage_file):
                 with open(self.storage_file, 'r') as f:
                     self.metadata = json.load(f)
-                logger.info(f"Loaded metadata from {self.storage_file}")
+                # logger.info(f"Loaded metadata from {self.storage_file}")
             else:
                 self.metadata = {}
                 logger.info("No existing metadata file found, starting with empty storage")
@@ -30,7 +30,7 @@ class MetadataStorage:
         try:
             with open(self.storage_file, 'w') as f:
                 json.dump(self.metadata, f, indent=2)
-            logger.info(f"Saved metadata to {self.storage_file}")
+            # logger.info(f"Saved metadata to {self.storage_file}")
         except Exception as e:
             logger.error(f"Error saving metadata: {str(e)}")
 
@@ -39,7 +39,7 @@ class MetadataStorage:
         try:
             self.metadata[document_url] = metadata
             self._save_metadata()
-            logger.info(f"Added/updated metadata for document: {document_url}")
+            # logger.info(f"Added/updated metadata for document: {document_url}")
         except Exception as e:
             logger.error(f"Error adding metadata: {str(e)}")
             raise
@@ -58,7 +58,7 @@ class MetadataStorage:
             if document_url in self.metadata:
                 del self.metadata[document_url]
                 self._save_metadata()
-                logger.info(f"Deleted metadata for document: {document_url}")
+                # logger.info(f"Deleted metadata for document: {document_url}")
         except Exception as e:
             logger.error(f"Error deleting metadata: {str(e)}")
             raise

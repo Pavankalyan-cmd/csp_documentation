@@ -41,7 +41,7 @@ class ExcelGenerator:
                             )
                         self.metadata_list.append(doc)
                         self.document_urls.append(doc['File Name'])
-                self.logger.info(f"Loaded {len(self.metadata_list)} documents from metadata storage")
+                # self.logger.info(f"Loaded {len(self.metadata_list)} documents from metadata storage")
                 return
 
             # Fallback to Excel if no stored metadata
@@ -54,7 +54,7 @@ class ExcelGenerator:
                             doc['Template ID'] = template_id
                             self.metadata_list.append(doc)
                             self.document_urls.append(doc.get('File Name', ''))
-                        self.logger.info(f"Loaded {len(df)} documents from Excel for template {template_id}")
+                        # self.logger.info(f"Loaded {len(df)} documents from Excel for template {template_id}")
         except Exception as e:
             self.logger.error(f"Error loading existing data: {e}")
             # Initialize empty lists if there's an error
@@ -107,17 +107,76 @@ class ExcelGenerator:
         
         return cleaned.strip()
 
+    # def add_metadata(self, metadata: Dict, document_url: str, template_id: str) -> str:
+    #     try:
+    #         # Extract file name from webUrl after Documents/
+    #         if 'sharepoint.com' in document_url.lower():
+    #             try:
+    #                 file_name = document_url.split('Documents/')[-1]
+    #                 file_name = file_name.replace('%20', ' ')
+    #             except:
+    #                 file_name = os.path.basename(document_url)
+    #         else:
+    #             file_name = os.path.basename(document_url)
+            
+    #         # Get template fields from template context
+    #         from context.template_context import TemplateContext
+    #         template_context = TemplateContext()
+    #         template = template_context.get_template(template_id)
+    #         if not template:
+    #             logger.error(f"No template found for template ID: {template_id}")
+    #             raise ValueError(f"No template found for template ID: {template_id}")
+            
+    #         template_fields = template.get('metadataFields', [])
+    #         if not template_fields:
+    #             logger.error(f"No template fields found for template ID: {template_id}")
+    #             raise ValueError(f"No template fields found for template ID: {template_id}")
+            
+    #         # Create a new metadata dict with only template fields
+    #         cleaned_metadata = {}
+    #         for field in template_fields:
+    #             field_name = field.get('name')
+    #             if field_name in metadata:
+    #                 # Clean the value for Excel
+    #                 cleaned_value = self._clean_metadata_value(metadata[field_name])
+    #                 cleaned_metadata[field_name] = cleaned_value
+    #             else:
+    #                 cleaned_metadata[field_name] = "Not found"
+            
+    #         # Add required fields
+    #         cleaned_metadata['File Name'] = file_name
+    #         cleaned_metadata['Template ID'] = template_id
+            
+    #         # Add to metadata storage
+    #         self.metadata_storage.add_metadata(cleaned_metadata, file_name)
+            
+    #         # Always append new metadata
+    #         self.metadata_list.append(cleaned_metadata)
+    #         self.document_urls.append(file_name)
+    #         # logger.info(f"Added new metadata for file: {file_name}")
+
+    #         # Generate Excel with all accumulated metadata for this template
+    #         return self.generate_excel(template_id)
+
+    #     except Exception as e:
+    #         logger.error(f"Error adding metadata: {str(e)}")
+    #         raise
+
     def add_metadata(self, metadata: Dict, document_url: str, template_id: str) -> str:
         try:
-            # Extract file name from webUrl after Documents/
-            if 'sharepoint.com' in document_url.lower():
-                try:
-                    file_name = document_url.split('Documents/')[-1]
-                    file_name = file_name.replace('%20', ' ')
-                except:
-                    file_name = os.path.basename(document_url)
+            # Prefer explicit file name present in metadata; fallback to URL extraction
+            if isinstance(metadata, dict) and metadata.get('File Name'):
+                file_name = str(metadata.get('File Name'))
             else:
-                file_name = os.path.basename(document_url)
+                # Extract file name from webUrl after Documents/
+                if 'sharepoint.com' in document_url.lower():
+                    try:
+                        file_name = document_url.split('Documents/')[-1]
+                        file_name = file_name.replace('%20', ' ')
+                    except:
+                        file_name = os.path.basename(document_url)
+                else:
+                    file_name = os.path.basename(document_url)
             
             # Get template fields from template context
             from context.template_context import TemplateContext
@@ -281,7 +340,7 @@ class ExcelGenerator:
                     cell.font = header_font
                     cell.alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='center')
             
-            logger.info(f"Excel file generated successfully: {excel_path}")
+            # logger.info(f"Excel file generated successfully: {excel_path}")
             
             # Upload Excel file to SharePoint and get URL
             sharepoint_url = None
@@ -304,7 +363,7 @@ class ExcelGenerator:
                         if doc_url:
                             break
                 if doc_url:
-                    logger.info(f"Processing document URL: {doc_url}")
+                    # logger.info(f"Processing document URL: {doc_url}")
                     if 'graph.microsoft.com' in doc_url:
                         if '/drive/root:/' in doc_url:
                             try:
@@ -315,15 +374,15 @@ class ExcelGenerator:
                                     folder_path = folder_path.replace('%20', ' ')
                                 if not folder_path:
                                     raise ValueError("Empty folder path extracted from URL")
-                                logger.info(f"Final SharePoint folder path: {folder_path}")
+                                # logger.info(f"Final SharePoint folder path: {folder_path}")
                                 with open(excel_path, 'rb') as file:
                                     file_content = file.read()
                                     file_name = os.path.basename(excel_path)
                                     if not file_content:
                                         logger.error("Excel file content is empty")
                                     else:
-                                        logger.info(f"File size: {len(file_content)} bytes")
-                                        logger.info(f"Attempting to upload Excel file to SharePoint folder: {folder_path}")
+                                        # logger.info(f"File size: {len(file_content)} bytes")
+                                        # logger.info(f"Attempting to upload Excel file to SharePoint folder: {folder_path}")
                                         try:
                                             sharepoint_url = sharepoint_service.upload_file(file_content, file_name, folder_path)
                                             if sharepoint_url:

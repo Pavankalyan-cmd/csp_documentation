@@ -9,11 +9,6 @@ logger = logging.getLogger(__name__)
 
 class TemplateContext:
     def __init__(self):
-        # # Set the absolute path to the templates directory
-        # self.templates_dir = os.path.join(
-        #     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
-        #     "Templates_dir"
-        # )
         self.templates_dir = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
             "..",
@@ -76,81 +71,86 @@ class TemplateContext:
         logger.error(f"Template with ID {template_id} not found")
         return None
     
-    def get_template_fields(self, template_id: str) -> List[Dict]:
-        """
-        Get the fields for a specific template.
+  
+  
+  
+  
+  
+    # def get_template_fields(self, template_id: str) -> List[Dict]:
+    #     """
+    #     Get the fields for a specific template.
         
-        Args:
-            template_id (str): The ID of the template
+    #     Args:
+    #         template_id (str): The ID of the template
             
-        Returns:
-            List[Dict]: List of field dictionaries
-        """
-        template = self.get_template(template_id)
-        if not template:
-            return []
+    #     Returns:
+    #         List[Dict]: List of field dictionaries
+    #     """
+    #     template = self.get_template(template_id)
+    #     if not template:
+    #         return []
             
-        return template.get('metadataFields', [])
+    #     return template.get('metadataFields', [])
     
-    def save_template(self, template_data: Dict) -> bool:
-        """
-        Save a template to a file.
+    # def save_template(self, template_data: Dict) -> bool:
+    #     """
+    #     Save a template to a file.
         
-        Args:
-            template_data (Dict): The template data to save
+    #     Args:
+    #         template_data (Dict): The template data to save
             
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            template_id = template_data.get('id')
-            if not template_id:
-                logger.error("Template ID is required")
-                return False
+    #     Returns:
+    #         bool: True if successful, False otherwise
+    #     """
+    #     try:
+    #         template_id = template_data.get('id')
+    #         if not template_id:
+    #             logger.error("Template ID is required")
+    #             return False
                 
-            template_path = os.path.join(self.templates_dir, f"{template_id}.json")
+    #         template_path = os.path.join(self.templates_dir, f"{template_id}.json")
             
-            with open(template_path, 'w') as f:
-                json.dump(template_data, f, indent=2)
+    #         with open(template_path, 'w') as f:
+    #             json.dump(template_data, f, indent=2)
                 
-            # Update the in-memory templates
-            self.templates[template_id] = template_data
+    #         # Update the in-memory templates
+    #         self.templates[template_id] = template_data
             
-            # logger.info(f"Saved template with ID: {template_id}")
-            return True
+    #         # logger.info(f"Saved template with ID: {template_id}")
+    #         return True
             
-        except Exception as e:
-            logger.error(f"Error saving template: {str(e)}")
-            return False
+    #     except Exception as e:
+    #         logger.error(f"Error saving template: {str(e)}")
+    #         return False
     
-    def delete_template(self, template_id: str) -> bool:
-        """
-        Delete a template.
+    # def delete_template(self, template_id: str) -> bool:
+    #     """
+    #     Delete a template.
         
-        Args:
-            template_id (str): The ID of the template to delete
+    #     Args:
+    #         template_id (str): The ID of the template to delete
             
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            template_path = os.path.join(self.templates_dir, f"{template_id}.json")
+    #     Returns:
+    #         bool: True if successful, False otherwise
+    #     """
+    #     try:
+    #         template_path = os.path.join(self.templates_dir, f"{template_id}.json")
             
-            if os.path.exists(template_path):
-                os.remove(template_path)
-                if template_id in self.templates:
-                    del self.templates[template_id]
+    #         if os.path.exists(template_path):
+    #             os.remove(template_path)
+    #             if template_id in self.templates:
+    #                 del self.templates[template_id]
                     
-                # logger.info(f"Deleted template with ID: {template_id}")
-                return True
+    #             # logger.info(f"Deleted template with ID: {template_id}")
+    #             return True
                 
-            logger.error(f"Template with ID {template_id} not found")
-            return False
+    #         logger.error(f"Template with ID {template_id} not found")
+    #         return False
             
-        except Exception as e:
-            logger.error(f"Error deleting template: {str(e)}")
-            return False
+    #     except Exception as e:
+    #         logger.error(f"Error deleting template: {str(e)}")
+    #         return False
 
-    def get_all_templates(self) -> List[Dict]:
-        """Get all templates."""
-        return list(self.templates.values()) 
+    # def get_all_templates(self) -> List[Dict]:
+    #     """Get all templates."""
+    #     return list(self.templates.values()) 

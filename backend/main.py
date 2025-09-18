@@ -68,21 +68,6 @@ excel_generator = ExcelGenerator(output_dir="output")
 # Initialize metadata storage
 metadata_storage = MetadataStorage()
 
-@app.get("/health")
-async def health_check():
-    """
-    Health check endpoint.
-    
-    Returns:
-        dict: Health status
-    """
-    return {"status": "healthy"}
-
-
-
-
-
-
 @app.post("/templates")
 async def create_template(template: Template):
     """
@@ -173,6 +158,106 @@ async def delete_template(template_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/process-document")
+async def process_document(document_url: str, template_id: str,model_id: str):
+    """
+    Process one or more documents and extract metadata.
+    
+    Args:
+        document_url (str): URL of the document, Drive folder, or SharePoint folder
+        template_id (str): ID of the template to use for processing
+        
+    Returns:
+        dict: Response containing metadata and success message
+    """
+    try:
+        logger.info(f"Processing document(s) with template ID: {template_id}")
+        logging.info(f"Document URL: {document_url}")
+        logging.info(f"Model ID: {model_id}")
+
+        # Get the list of files to process (names and urls)
+        files_to_process = document_processor.get_files_to_process(document_url)
+        total_documents = len(files_to_process)
+        current_document = files_to_process[0]['name'] if files_to_process else None
+
+        # Process the document(s) asynchronously
+        all_metadata = await document_processor.process_documents(document_url, template_id,model_id)
+        
+        # Add each document's metadata to Excel file and collect sharepoint_url
+        sharepoint_url = None
+        for metadata in all_metadata:
+            result = excel_generator.add_metadata(metadata, document_url, template_id)
+            if isinstance(result, dict) and result.get('sharepoint_url'):
+                sharepoint_url = result['sharepoint_url']
+        
+        return {
+            "status": "success",
+            "metadata": all_metadata,
+            "total_documents": total_documents,
+            "current_document": current_document,
+            "sharepoint_url": sharepoint_url,
+            "message": f"Processed {len(all_metadata)} document(s) successfully. Use /download-excel to download the Excel file."
+        }
+    except Exception as e:
+        logger.error(f"Error processing document(s): {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/generate-excel")
+async def generate_excel(request: Request):
+    try:
+        data = await request.json()
+        metadata = data.get('metadata', {})
+        document_url = data.get('document_url', '')
+        template_id = data.get('template_id', '')
+        
+        if not template_id:
+            raise HTTPException(status_code=400, detail="Template ID is required")
+        
+        # Handle both list and dict metadata
+        if isinstance(metadata, list):
+            # Convert list of metadata to dict
+            metadata_dict = {}
+            for item in metadata:
+                if isinstance(item, dict):
+                    metadata_dict.update(item)
+            metadata = metadata_dict
+        
+        # Add metadata to Excel generator
+        excel_generator.add_metadata(metadata, document_url, template_id)
+        
+        # Generate/update Excel file
+        excel_path = excel_generator.generate_excel(template_id)
+        
+        return {"excel_path": excel_path}
+    except Exception as e:
+        logger.error(f"Error generating Excel: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/download-excel")
+async def download_excel(template_id: str):
+    try:
+        excel_path = excel_generator.get_current_excel_path(template_id)
+        if not excel_path or not os.path.exists(excel_path):
+            raise HTTPException(status_code=404, detail="Excel file not found")
+            
+        return FileResponse(
+            excel_path,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename=os.path.basename(excel_path)
+        )
+    except Exception as e:
+        logger.error(f"Error downloading Excel: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint.
+    
+    Returns:
+        dict: Health status
+    """
+    return {"status": "healthy"}
 
 @app.post("/templates/upload-fields")
 async def upload_template_fields(file: UploadFile = File(...)):
@@ -260,106 +345,6 @@ async def upload_template_fields(file: UploadFile = File(...)):
             detail=f"An unexpected error occurred: {str(e)}"
         )
 
-
-
-
-@app.post("/process-document")
-async def process_document(document_url: str, template_id: str,model_id: str):
-    """
-    Process one or more documents and extract metadata.
-    
-    Args:
-        document_url (str): URL of the document, Drive folder, or SharePoint folder
-        template_id (str): ID of the template to use for processing
-        
-    Returns:
-        dict: Response containing metadata and success message
-    """
-    try:
-        logger.info(f"Processing document(s) with template ID: {template_id}")
-        logging.info(f"Document URL: {document_url}")
-        logging.info(f"Model ID: {model_id}")
-
-        # Get the list of files to process (names and urls)
-        files_to_process = document_processor.get_files_to_process(document_url)
-        total_documents = len(files_to_process)
-        current_document = files_to_process[0]['name'] if files_to_process else None
-
-        # Process the document(s) asynchronously
-        all_metadata = await document_processor.process_documents(document_url, template_id,model_id)
-        
-        # Add each document's metadata to Excel file and collect sharepoint_url
-        sharepoint_url = None
-        for metadata in all_metadata:
-            result = excel_generator.add_metadata(metadata, document_url, template_id)
-            if isinstance(result, dict) and result.get('sharepoint_url'):
-                sharepoint_url = result['sharepoint_url']
-        
-        return {
-            "status": "success",
-            "metadata": all_metadata,
-            "total_documents": total_documents,
-            "current_document": current_document,
-            "sharepoint_url": sharepoint_url,
-            "message": f"Processed {len(all_metadata)} document(s) successfully. Use /download-excel to download the Excel file."
-        }
-    except Exception as e:
-        logger.error(f"Error processing document(s): {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-
-
-
-@app.post("/generate-excel")
-async def generate_excel(request: Request):
-    try:
-        data = await request.json()
-        metadata = data.get('metadata', {})
-        document_url = data.get('document_url', '')
-        template_id = data.get('template_id', '')
-        
-        if not template_id:
-            raise HTTPException(status_code=400, detail="Template ID is required")
-        
-        # Handle both list and dict metadata
-        if isinstance(metadata, list):
-            # Convert list of metadata to dict
-            metadata_dict = {}
-            for item in metadata:
-                if isinstance(item, dict):
-                    metadata_dict.update(item)
-            metadata = metadata_dict
-        
-        # Add metadata to Excel generator
-        excel_generator.add_metadata(metadata, document_url, template_id)
-        
-        # Generate/update Excel file
-        excel_path = excel_generator.generate_excel(template_id)
-        
-        return {"excel_path": excel_path}
-    except Exception as e:
-        logger.error(f"Error generating Excel: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/download-excel")
-async def download_excel(template_id: str):
-    try:
-        excel_path = excel_generator.get_current_excel_path(template_id)
-        if not excel_path or not os.path.exists(excel_path):
-            raise HTTPException(status_code=404, detail="Excel file not found")
-            
-        return FileResponse(
-            excel_path,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            filename=os.path.basename(excel_path)
-        )
-    except Exception as e:
-        logger.error(f"Error downloading Excel: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-
 @app.get("/metadata")
 async def get_metadata():
     """
@@ -405,10 +390,6 @@ async def delete_metadata(document_url: str, template_id: str):
     except Exception as e:
         logger.error(f"Error deleting metadata: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-
-
 
 @app.post("/process-folder")
 async def process_folder(folder_path: str):
@@ -709,3 +690,21 @@ async def process_local_folder_pdfs(folder_path: str):
         logger.error(f"Error in process_local_folder_pdfs: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# @app.get("/token-statistics")
+# async def get_token_statistics():
+#     """
+#     Get token usage statistics for document processing.
+    
+#     Returns:
+#         dict: Token usage statistics including total tokens, documents processed,
+#               documents exceeding limit, and tokens per minute
+#     """
+#     try:
+#         stats = document_processor.get_token_statistics()
+#         return {
+#             "status": "success",
+#             "statistics": stats
+#         }
+#     except Exception as e:
+#         logger.error(f"Error getting token statistics: {str(e)}")
+#         raise HTTPException(status_code=500, detail=str(e)) 

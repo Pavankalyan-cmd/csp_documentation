@@ -63,7 +63,13 @@ class DocumentProcessor:
             'documents_exceeding_limit': 0
         }
         
-
+        # Initialize tokenizer
+        self.tokenizer = tiktoken.get_encoding("cl100k_base") 
+        
+        # Token limits and batch settings
+        self.MAX_TOKENS_PER_BATCH = 900000  # 0.9 million tokens per batch
+        self.MAX_BATCH_SIZE = 10  # Maximum number of documents per batch
+        self.BATCH_PROCESSING_TIMEOUT = 120  # 2 minutes timeout for batch processing
         
         # Initialize queues and thread pools
         self.document_queue = Queue()
@@ -75,16 +81,51 @@ class DocumentProcessor:
         # Lock for thread-safe operations
         self.token_lock = threading.Lock()
 
-
     def _get_temp_file_path(self) -> str:
         """Generate a unique temporary file path."""
         temp_dir = tempfile.gettempdir()
         unique_id = str(uuid.uuid4())
         return os.path.join(temp_dir, f"temp_document_{unique_id}.pdf")
 
+    def _count_tokens(self, text: str) -> int:
+        """Count the number of tokens in a text string."""
+        try:
+            return len(self.tokenizer.encode(text))
+        except Exception as e:
+            logger.error(f"Error counting tokens: {str(e)}")
+            return 0
 
+    def _update_token_tracking(self, tokens: int):
+        """Update token tracking statistics."""
+        current_time = datetime.now()
+        self.token_tracking['total_tokens'] += tokens
+        self.token_tracking['last_minute_tokens'] += tokens
+        
+        # Check if a minute has passed
+        if current_time - self.token_tracking['last_minute_time'] >= timedelta(minutes=1):
+            # Record tokens per minute
+            self.token_tracking['tokens_per_minute'].append({
+                'timestamp': self.token_tracking['last_minute_time'],
+                'tokens': self.token_tracking['last_minute_tokens']
+            })
+            
+            # Check if we exceeded the limit
+            if self.token_tracking['last_minute_tokens'] > self.MAX_TOKENS_PER_BATCH:
+                self.token_tracking['documents_exceeding_limit'] += 1
+                logger.warning(f"Token limit exceeded in the last minute: {self.token_tracking['last_minute_tokens']} tokens")
+            
+            # Reset for next minute
+            self.token_tracking['last_minute_tokens'] = 0
+            self.token_tracking['last_minute_time'] = current_time
 
-
+    def get_token_statistics(self) -> Dict:
+        """Get current token usage statistics."""
+        return {
+            'total_tokens': self.token_tracking['total_tokens'],
+            'documents_processed': self.token_tracking['documents_processed'],
+            'documents_exceeding_limit': self.token_tracking['documents_exceeding_limit'],
+            'tokens_per_minute': self.token_tracking['tokens_per_minute'][-5:] if self.token_tracking['tokens_per_minute'] else []
+        }
 
     def _initialize_sharepoint(self, site_url: str):
         """Initialize SharePoint client if not already initialized."""
@@ -231,8 +272,10 @@ class DocumentProcessor:
                 # Extract text
                 text = self.extract_text(temp_file_path,file['name'])
                 
-    
-
+                # Count tokens
+                text_tokens = self._count_tokens(text)
+                with self.token_lock:
+                    self._update_token_tracking(text_tokens)
 
                 
                 # Generate prompt
@@ -244,69 +287,63 @@ class DocumentProcessor:
            
                 prompt = self._generate_prompt(text, fields)
                 
-
+                # Count prompt tokens
+                prompt_tokens = self._count_tokens(prompt)
+                with self.token_lock:
+                    self._update_token_tracking(prompt_tokens)
                 
-                # --- NEW: Get file size and page count ---
-                file_size = os.path.getsize(temp_file_path)
-                with open(temp_file_path, 'rb') as f:
-                    pdf_reader = PdfReader(f)
-                    page_count = len(pdf_reader.pages)
-
-                logger.info(
-                            f"Processing '{file['name']}' | Size: {self._format_file_size(file_size)} | Pages: {page_count}"
-                        )
-
-
-
                 # Get metadata from Gemini
                 # response = self.gemini_model.generate_content(prompt)
                 # logging.info(f"Gemini response: {response.text}")
                 logger.info(f"Sending file '{file['name']}' to LLM")
 
-                response=chat_with_openrouter(prompt,model_id,file["name"],file_size=self._format_file_size(file_size), page_count=page_count)  # Call OpenRouter for logging purposes
+                response=chat_with_openrouter(prompt,model_id,file["name"])  # Call OpenRouter for logging purposes
                 # logging.info(f"Received response response from LLM {response}")
                 
                 # Count response tokens
-            #     response_tokens = self._count_tokens(response)
-            #     with self.token_lock:
-            #         self._update_token_tracking(response_tokens)
+                response_tokens = self._count_tokens(response)
+                with self.token_lock:
+                    self._update_token_tracking(response_tokens)
                 
-            #     # Parse response
-            #     metadata = self._parse_response(response)
-            #     try:
-            #         metadata['Document URL'] = file.get('url')
-            #         metadata['File Name'] = file.get('name', os.path.basename(file.get('url', '')))
-            #     except Exception:
-            #         pass
+                # Parse response
+                metadata = self._parse_response(response)
+                try:
+                    metadata['Document URL'] = file.get('url')
+                    metadata['File Name'] = file.get('name', os.path.basename(file.get('url', '')))
+                except Exception:
+                    pass
                 
-       
+                # Add token statistics
+                metadata['token_statistics'] = {
+                    'text_tokens': text_tokens,
+                    'prompt_tokens': prompt_tokens,
+                    'response_tokens': response_tokens,
+                    'total_tokens': text_tokens + prompt_tokens + response_tokens
+                }
                 
                 
-            #     # Update document count
-            #     with self.token_lock:
-            #         self.token_tracking['documents_processed'] += 1
+                # Update document count
+                with self.token_lock:
+                    self.token_tracking['documents_processed'] += 1
                 
-            #     # Add result to queue
-            #     self.result_queue.put(metadata)
+                # Add result to queue
+                self.result_queue.put(metadata)
                 
             except Exception as e:
                 logger.error(f"Error processing document {file.get('name', 'unknown')}: {str(e)}")
-                # self.result_queue.put({
-                #     'error': str(e),
-                #     'file': file.get('name', 'unknown')
-                # })
-            # finally:
+                self.result_queue.put({
+                    'error': str(e),
+                    'file': file.get('name', 'unknown')
+                })
+            finally:
                 # Clean up temporary file
-                # if temp_file_path and os.path.exists(temp_file_path):
-                #     try:
-                #         os.remove(temp_file_path)
-                #     except Exception as e:
-                #         logger.warning(f"Could not remove temporary file {temp_file_path}: {str(e)}")
+                if temp_file_path and os.path.exists(temp_file_path):
+                    try:
+                        os.remove(temp_file_path)
+                    except Exception as e:
+                        logger.warning(f"Could not remove temporary file {temp_file_path}: {str(e)}")
                 
-                # self.document_queue.task_done()
-
-
-                
+                self.document_queue.task_done()
 
     def download_document(self, document_url: str, temp_file_path: str) -> None:
         """
@@ -651,12 +688,3 @@ CRITICAL INSTRUCTIONS:
                 'name': os.path.basename(url),
                 'url': url
             }] 
-
-    def _format_file_size(self, size_in_bytes: int) -> str:
-        """Return human-readable file size (KB or MB)."""
-        kb = size_in_bytes / 1024
-        if kb < 1024:
-            return f"{kb:.2f} KB"
-        else:
-            mb = kb / 1024
-            return f"{mb:.2f} MB"    

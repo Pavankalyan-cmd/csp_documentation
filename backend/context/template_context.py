@@ -9,11 +9,18 @@ logger = logging.getLogger(__name__)
 
 class TemplateContext:
     def __init__(self):
-        # Get the backend directory path
-        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        
-        # Set the templates directory path
-        self.templates_dir = os.path.join(backend_dir, "templates")
+        # # Set the absolute path to the templates directory
+        # self.templates_dir = os.path.join(
+        #     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+        #     "Templates_dir"
+        # )
+        self.templates_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..",
+            "Templates_dir"
+        )
+        self.templates_dir = os.path.abspath(self.templates_dir)
+        logger.info(f"Using templates directory: {self.templates_dir}")
         
         # Create templates directory if it doesn't exist
         os.makedirs(self.templates_dir, exist_ok=True)

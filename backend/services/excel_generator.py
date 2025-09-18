@@ -205,9 +205,10 @@ class ExcelGenerator:
             # Add required fields
             cleaned_metadata['File Name'] = file_name
             cleaned_metadata['Template ID'] = template_id
+            cleaned_metadata['Document URL'] = document_url 
             
             # Add to metadata storage
-            self.metadata_storage.add_metadata(cleaned_metadata, file_name)
+            self.metadata_storage.add_metadata(cleaned_metadata, document_url)
             
             # Always append new metadata
             self.metadata_list.append(cleaned_metadata)
@@ -364,42 +365,37 @@ class ExcelGenerator:
                             break
                 if doc_url:
                     # logger.info(f"Processing document URL: {doc_url}")
-                    if 'graph.microsoft.com' in doc_url:
-                        if '/drive/root:/' in doc_url:
-                            try:
-                                full_path = doc_url.split('/drive/root:/')[1]
-                                folder_path = full_path.split(':/')[0]
-                                folder_path = folder_path.rstrip('/')
-                                if '%20' in folder_path:
-                                    folder_path = folder_path.replace('%20', ' ')
-                                if not folder_path:
-                                    raise ValueError("Empty folder path extracted from URL")
-                                # logger.info(f"Final SharePoint folder path: {folder_path}")
-                                with open(excel_path, 'rb') as file:
-                                    file_content = file.read()
-                                    file_name = os.path.basename(excel_path)
-                                    if not file_content:
-                                        logger.error("Excel file content is empty")
-                                    else:
-                                        # logger.info(f"File size: {len(file_content)} bytes")
-                                        # logger.info(f"Attempting to upload Excel file to SharePoint folder: {folder_path}")
-                                        try:
-                                            sharepoint_url = sharepoint_service.upload_file(file_content, file_name, folder_path)
-                                            if sharepoint_url:
-                                                logger.info(f"Excel file uploaded successfully to SharePoint: {sharepoint_url}")
-                                            else:
-                                                logger.error("Failed to get SharePoint URL after upload")
-                                        except Exception as upload_error:
-                                            logger.error(f"Error during SharePoint upload: {str(upload_error)}")
-                                            logger.error(f"Upload URL: {doc_url}")
-                                            logger.error(f"Target folder: {folder_path}")
-                                            logger.error(f"File name: {file_name}")
-                                            logger.error(f"File size: {len(file_content)} bytes")
-                            except Exception as path_error:
-                                logger.error(f"Error extracting folder path from URL: {str(path_error)}")
-                                logger.error(f"Original URL: {doc_url}")
+                    if 'graph.microsoft.com' in doc_url and '/drive/root:/' in doc_url:
+                        try:
+                            full_path = doc_url.split('/drive/root:/')[1]
+                            folder_path = full_path.split(':/')[0]
+                            folder_path = folder_path.rstrip('/')
+                            folder_path = folder_path.replace('%20', ' ')
+                            if not folder_path:
+                                raise ValueError("Empty folder path extracted from URL")
+                            with open(excel_path, 'rb') as file:
+                                file_content = file.read()
+                                file_name = os.path.basename(excel_path)
+                                if not file_content:
+                                    logger.error("Excel file content is empty")
+                                else:
+                                    try:
+                                        sharepoint_url = sharepoint_service.upload_file(file_content, file_name, folder_path)
+                                        if sharepoint_url:
+                                            logger.info(f"Excel file uploaded successfully to SharePoint: {sharepoint_url}")
+                                        else:
+                                            logger.error("Failed to get SharePoint URL after upload")
+                                    except Exception as upload_error:
+                                        logger.error(f"Error during SharePoint upload: {str(upload_error)}")
+                                        logger.error(f"Upload URL: {doc_url}")
+                                        logger.error(f"Target folder: {folder_path}")
+                                        logger.error(f"File name: {file_name}")
+                                        logger.error(f"File size: {len(file_content)} bytes")
+                        except Exception as path_error:
+                            logger.error(f"Error extracting folder path from URL: {str(path_error)}")
+                            logger.error(f"Original URL: {doc_url}")
                     else:
-                        logger.error("Invalid URL format - not a Graph API URL")
+                        logger.error(f"Invalid Graph API URL: {doc_url}")
                 else:
                     logger.error("No document URL found in template metadata")
             except Exception as e:

@@ -107,60 +107,7 @@ class ExcelGenerator:
         
         return cleaned.strip()
 
-    # def add_metadata(self, metadata: Dict, document_url: str, template_id: str) -> str:
-    #     try:
-    #         # Extract file name from webUrl after Documents/
-    #         if 'sharepoint.com' in document_url.lower():
-    #             try:
-    #                 file_name = document_url.split('Documents/')[-1]
-    #                 file_name = file_name.replace('%20', ' ')
-    #             except:
-    #                 file_name = os.path.basename(document_url)
-    #         else:
-    #             file_name = os.path.basename(document_url)
-            
-    #         # Get template fields from template context
-    #         from context.template_context import TemplateContext
-    #         template_context = TemplateContext()
-    #         template = template_context.get_template(template_id)
-    #         if not template:
-    #             logger.error(f"No template found for template ID: {template_id}")
-    #             raise ValueError(f"No template found for template ID: {template_id}")
-            
-    #         template_fields = template.get('metadataFields', [])
-    #         if not template_fields:
-    #             logger.error(f"No template fields found for template ID: {template_id}")
-    #             raise ValueError(f"No template fields found for template ID: {template_id}")
-            
-    #         # Create a new metadata dict with only template fields
-    #         cleaned_metadata = {}
-    #         for field in template_fields:
-    #             field_name = field.get('name')
-    #             if field_name in metadata:
-    #                 # Clean the value for Excel
-    #                 cleaned_value = self._clean_metadata_value(metadata[field_name])
-    #                 cleaned_metadata[field_name] = cleaned_value
-    #             else:
-    #                 cleaned_metadata[field_name] = "Not found"
-            
-    #         # Add required fields
-    #         cleaned_metadata['File Name'] = file_name
-    #         cleaned_metadata['Template ID'] = template_id
-            
-    #         # Add to metadata storage
-    #         self.metadata_storage.add_metadata(cleaned_metadata, file_name)
-            
-    #         # Always append new metadata
-    #         self.metadata_list.append(cleaned_metadata)
-    #         self.document_urls.append(file_name)
-    #         # logger.info(f"Added new metadata for file: {file_name}")
-
-    #         # Generate Excel with all accumulated metadata for this template
-    #         return self.generate_excel(template_id)
-
-    #     except Exception as e:
-    #         logger.error(f"Error adding metadata: {str(e)}")
-    #         raise
+   
 
     def add_metadata(self, metadata: Dict, document_url: str, template_id: str) -> str:
         try:
@@ -414,62 +361,4 @@ class ExcelGenerator:
     def get_current_excel_path(self, template_id: str) -> str:
         return self._get_excel_path(template_id)
 
-    # def clear_data(self, template_id: str = None) -> None:
-    #     if template_id:
-    #         # Clear data for specific template
-    #         self.metadata_list = [doc for doc in self.metadata_list if doc.get('Template ID') != template_id]
-    #         self.document_urls = [url for url in self.document_urls if url not in [doc.get('File Name') for doc in self.metadata_list if doc.get('Template ID') == template_id]]
-    #         excel_path = self._get_excel_path(template_id)
-    #         if os.path.exists(excel_path):
-    #             os.remove(excel_path)
-    #     else:
-    #         # Clear all data
-    #         self.metadata_list = []
-    #         self.document_urls = []
-    #         for excel_path in self.template_excel_files.values():
-    #             if os.path.exists(excel_path):
-    #                 os.remove(excel_path)
-    #         self.template_excel_files = {}
-    #     self.metadata_storage._save_metadata()
-    #     logger.info("Cleared stored data")
-
-    # def delete_metadata(self, document_url: str, template_id: str) -> str:
-    #     """
-    #     Delete metadata for a specific document from the Excel file.
-        
-    #     Args:
-    #         document_url (str): URL of the document to delete
-    #         template_id (str): ID of the template
-            
-    #     Returns:
-    #         str: Path to the updated Excel file
-    #     """
-    #     try:
-    #         # Extract file name from URL
-    #         if 'sharepoint.com' in document_url.lower():
-    #             try:
-    #                 file_name = document_url.split('Documents/')[-1]
-    #                 file_name = file_name.replace('%20', ' ')
-    #             except:
-    #                 file_name = os.path.basename(document_url)
-    #         else:
-    #             file_name = os.path.basename(document_url)
-            
-    #         # Remove from metadata list and document URLs
-    #         self.metadata_list = [doc for doc in self.metadata_list if doc.get('File Name') != file_name]
-    #         self.document_urls = [url for url in self.document_urls if url != file_name]
-            
-    #         # If no metadata left for this template, remove the Excel file
-    #         template_metadata = [doc for doc in self.metadata_list if doc.get('Template ID') == template_id]
-    #         if not template_metadata:
-    #             excel_path = self._get_excel_path(template_id)
-    #             if os.path.exists(excel_path):
-    #                 os.remove(excel_path)
-    #             return excel_path
-            
-    #         # Generate updated Excel file with remaining metadata
-    #         return self.generate_excel(template_id)
-            
-    #     except Exception as e:
-    #         logger.error(f"Error deleting metadata: {str(e)}")
-    #         raise
+    

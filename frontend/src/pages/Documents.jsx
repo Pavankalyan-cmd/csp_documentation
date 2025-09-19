@@ -174,6 +174,10 @@ const models = [
     id: "deepseek/deepseek-r1-0528-qwen3-8b:free",
     name: "DeepSeek R1 Qwen3 8B (0528)",
   },
+  {
+    id: "gemini-2.0-flash",
+    name: "gemini-2.0-flash",
+  },
 ];
 
 
@@ -553,13 +557,7 @@ const models = [
                 Click here to view the Excel file
               </a>
 
-              {/* <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="bg-gray-50 rounded-lg p-4 border border-gray-200"
-              >
-                {documents.length} documents processed
-              </motion.div> */}
+      
 
               <div className="flex justify-end space-y-2">
                 <motion.button
@@ -568,9 +566,7 @@ const models = [
                   onClick={handleDownloadExcel}
                   className="px-4 py-2 rounded-md bg-[#0098B3] text-white font-medium hover:bg-[#007A92] transition-colors flex items-center"
                 >
-                  {/* <svg className="h-5 w-5 mr-2" fill="red" stroke="red" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-</svg> */}
+
                   Download Excel
                 </motion.button>
               </div>
@@ -594,66 +590,6 @@ const models = [
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Token Statistics Panel */}
-        {/* <div className="mt-8 bg-white rounded-lg shadow-md p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-800">Token Usage Statistics</h2>
-            <button
-              onClick={() => setShowTokenStats(!showTokenStats)}
-              className="text-[#0098B3] hover:text-[#007A92] transition-colors"
-            >
-              {showTokenStats ? 'Hide Details' : 'Show Details'}
-            </button>
-          </div>
-          
-          {tokenStats && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600">Total Tokens</div>
-                  <div className="text-2xl font-semibold text-gray-800">{tokenStats.total_tokens.toLocaleString()}</div>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600">Documents Processed</div>
-                  <div className="text-2xl font-semibold text-gray-800">{tokenStats.documents_processed}</div>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600">Documents Exceeding Limit</div>
-                  <div className="text-2xl font-semibold text-gray-800">{tokenStats.documents_exceeding_limit}</div>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600">Current Tokens/Minute</div>
-                  <div className="text-2xl font-semibold text-gray-800">
-                    {tokenStats.tokens_per_minute.length > 0 
-                      ? tokenStats.tokens_per_minute[tokenStats.tokens_per_minute.length - 1].tokens.toLocaleString()
-                      : '0'}
-                  </div>
-                </div>
-              </div>
-              
-              {showTokenStats && tokenStats.tokens_per_minute.length > 0 && (
-                <div className="mt-4">
-                  <h3 className="text-lg font-semibold text-gray-800 mb-2">Recent Token Usage</h3>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <div className="space-y-2">
-                      {tokenStats.tokens_per_minute.map((entry, index) => (
-                        <div key={index} className="flex justify-between items-center">
-                          <div className="text-sm text-gray-600">
-                            {new Date(entry.timestamp).toLocaleTimeString()}
-                          </div>
-                          <div className="text-sm font-medium text-gray-800">
-                            {entry.tokens.toLocaleString()} tokens
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>*/}
       </div>
     </div>
   );

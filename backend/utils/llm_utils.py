@@ -1,5 +1,8 @@
 from typing import List, Dict
 import os
+import json
+import re
+import pandas as pd
 
 def _generate_prompt( text: str, fields: List[Dict],) -> str:
         """
@@ -160,3 +163,38 @@ CRITICAL INSTRUCTIONS:
 31. Include filename  and extract filename from given text
 """
         return prompt
+
+
+
+
+def log_to_excel(filename, page_count, file_size, usage, time_taken, excel_file="llm_logs.xlsx"):
+    # Safely extract usage keys
+    prompt_tokens = usage.get("prompt_tokens", 0) if usage else 0
+    completion_tokens = usage.get("completion_tokens", 0) if usage else 0
+    total_tokens = usage.get("total_tokens", 0) if usage else 0
+
+    new_row = {
+        "filename": filename,
+        "page_count": page_count,
+        "file_size": file_size,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+        "seconds": round(time_taken, 2),
+    }
+
+    # If Excel exists, append; else create
+    if os.path.exists(excel_file):
+        df = pd.read_excel(excel_file)
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+    else:
+        df = pd.DataFrame([new_row])
+
+    # enforce consistent column order
+    columns = [
+        "filename", "page_count", "file_size",
+        "prompt_tokens", "completion_tokens", "total_tokens", "seconds"
+    ]
+    df = df[columns]
+
+    df.to_excel(excel_file, index=False)

@@ -8,19 +8,19 @@ from services.sharepoint_service import SharePointService
 from context.template_context import TemplateContext
 from typing import List, Dict, Optional
 import re
-from urllib.parse import urlparse
-
 from concurrent.futures import ThreadPoolExecutor
 import time
 from queue import Queue
 import threading
 from functools import partial
-from utils.file_utils import _get_temp_file_path, _get_url_type
+from PyPDF2 import PdfReader
+
+from utils.file_utils import _get_temp_file_path, _get_url_type, format_file_size
 from utils.sharepoint_utils import _initialize_sharepoint, _get_sharepoint_files
 from utils.llm_utils import _generate_prompt
 from utils.llm_praser import _parse_response,extract_text
 
-from services.openRouter import chat_with_openrouter
+from services.llm import chat_with_llm
 
 # Load environment variables
 load_dotenv()
@@ -38,12 +38,7 @@ class DocumentProcessor:
             logger.warning(f"SharePoint service not available: {str(e)}")
             self.sharepoint_service = None
         
-        # Initialize Gemini client
-        gemini_api_key = os.getenv('GEMINI_API_KEY')
-        if not gemini_api_key:
-            raise ValueError("GEMINI_API_KEY not found in environment variables")
-        genai.configure(api_key=gemini_api_key)
-        self.gemini_model = genai.GenerativeModel('gemini-2.0-flash')
+
         
         # Initialize template context
         self.template_context = TemplateContext()
@@ -148,42 +143,34 @@ class DocumentProcessor:
                 # Extract text
                 text = extract_text(local_path,file['name'])
                 
-         
-
-                
-                # Generate prompt
+                # Get template fields 
                 template = self.template_context.get_template(template_id)
                 fields = template.get('metadataFields', [])
                 fields = [{'name': 'filename', 'description': f'Known file name: {file["name"]}'}] + fields       
+                # Add file size and page count fields if available
+                file_size = os.path.getsize(temp_file_path)
+                with open(temp_file_path, 'rb') as f:
+                    pdf_reader = PdfReader(f)
+                    page_count = len(pdf_reader.pages)
 
 
-           
+
+                # Generate prompt
                 prompt = _generate_prompt(text, fields)
                 
-         
-                
-                # Get metadata from Gemini
-                # response = self.gemini_model.generate_content(prompt)
-                # logging.info(f"Gemini response: {response.text}")
-                logger.info(f"Sending file '{file['name']}' to LLM")
 
-                response=chat_with_openrouter(prompt,model_id,file["name"])  # Call OpenRouter for logging purposes
-                # logging.info(f"Received response response from LLM {response}")
-                
-              
-            
+                logger.info(f"Sending file '{file['name']}' to LLM")
+                # Call LLM
+
+                response=chat_with_llm(prompt,model_id,file["name"],file_size=format_file_size(file_size), page_count=page_count)
+    
                 # Parse response
                 metadata = _parse_response(response)
                 try:
                     metadata['Document URL'] = file.get('url')
                     metadata['File Name'] = file.get('name', os.path.basename(file.get('url', '')))
                 except Exception:
-                    pass
-                
-                
-                
-                
-                
+                    pass           
                 # Add result to queue
                 self.result_queue.put(metadata)
                 
@@ -202,6 +189,8 @@ class DocumentProcessor:
                         logger.warning(f"Could not remove temporary file {temp_file_path}: {str(e)}")
                 
                 self.document_queue.task_done()
+
+
 
     def download_document(self, document_url: str, temp_file_path: Optional[str] = None) -> str:
         """

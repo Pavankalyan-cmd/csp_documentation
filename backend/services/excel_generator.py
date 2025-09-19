@@ -229,7 +229,9 @@ class ExcelGenerator:
             # Get template fields from template context
             from context.template_context import TemplateContext
             template_context = TemplateContext()
+
             template = template_context.get_template(template_id)
+
             if not template:
                 logger.error(f"No template found for template ID: {template_id}")
                 raise ValueError(f"No template found for template ID: {template_id}")
@@ -244,6 +246,7 @@ class ExcelGenerator:
             
             # Create DataFrame with only template fields
             df_data = []
+            
             for doc in template_metadata:
                 row = {}
                 for field in template_fields:

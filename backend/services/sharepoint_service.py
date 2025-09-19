@@ -3,10 +3,8 @@ import logging
 import requests
 from dotenv import load_dotenv
 from typing import Optional, List, Dict
-from office365.runtime.auth.client_credential import ClientCredential
-from office365.sharepoint.client_context import ClientContext
 import time
-
+from utils.sharepoint_utils import _get_site_id, _get_access_token
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,166 +45,39 @@ class SharePointService:
         if not all([self.client_id, self.client_secret, self.tenant_id, self.site_url, self.folder_path]):
             raise ValueError("Missing required SharePoint configuration in environment variables")
 
-    def _initialize_client(self):
-        """Initialize SharePoint client."""
-        if not self.client:
-            try:
-                credentials = ClientCredential(self.client_id, self.client_secret)
-                self.client = ClientContext(self.site_url).with_credentials(credentials)
-                # logger.info("SharePoint client initialized successfully")
-            except Exception as e:
-                logger.error(f"Error initializing SharePoint client: {str(e)}")
-                raise
+  
 
-    def _get_access_token(self) -> str:
-        """
-        Get Microsoft Graph API access token using client credentials flow.
-        
-        Returns:
-            str: Access token
-        """
-        try:
-            # Check if we have a valid token
-            if self.access_token and time.time() < self.token_expiry:
-                return self.access_token
 
-            # Get new token
-            token_url = f"https://login.microsoftonline.com/{self.tenant_id}/oauth2/token"
-            data = {
-                'client_id': self.client_id,
-                'client_secret': self.client_secret,
-                'grant_type': 'client_credentials',
-                'resource': 'https://graph.microsoft.com/'
-            }
-            
-            response = requests.post(token_url, data=data)
-            response.raise_for_status()
-            token_data = response.json()
-            
-            # Store token and expiry
-            self.access_token = token_data['access_token']
-            self.token_expiry = time.time() + int(token_data['expires_in']) - 300  # 5 min buffer
-            
-            return self.access_token
-            
-        except Exception as e:
-            logger.error(f"Error getting access token: {str(e)}")
-            raise
 
-    def _get_site_id(self) -> str:
-        """
-        Get the site ID for the regulatory-docs site.
-        
-        Returns:
-            str: Site ID
-        """
-        try:
-            access_token = self._get_access_token()
-            headers = {
-                'Authorization': f'Bearer {access_token}',
-                'Accept': 'application/json'
-            }
-            
-            # Search for the site
-            search_url = "https://graph.microsoft.com/v1.0/sites?search=regulatory-docs"
-            response = requests.get(search_url, headers=headers)
-            response.raise_for_status()
-            
-            sites = response.json().get('value', [])
-            if not sites:
-                raise ValueError("Site not found")
-                
-            # Get the site ID
-            site_id = sites[0]['id']
-            # logger.info(f"Found site ID: {site_id}")
-            return site_id
-            
-        except Exception as e:
-            logger.error(f"Error getting site ID: {str(e)}")
-            raise
-
-    def get_files(self, folder_path: Optional[str] = None) -> List[Dict]:
-        """
-        Get all PDF files from a SharePoint folder using pagination.
-        
-        Args:
-            folder_path (str, optional): Custom folder path. Defaults to "Regulatory IDMP Documents".
-            
-        Returns:
-            List[Dict]: List of dictionaries with file metadata.
-        """
-        try:
-            access_token = self._get_access_token()
-            site_id = self._get_site_id()
-            
-            headers = {
-                'Authorization': f'Bearer {access_token}',
-                'Accept': 'application/json'
-            }
-            
-            # Get files from the specified folder
-            folder_path = folder_path or "Regulatory IDMP Documents"
-            files_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/drive/root:/{folder_path}:/children"
-            
-            all_files = []
-            while files_url:
-                response = requests.get(files_url, headers=headers)
-                response.raise_for_status()
-                data = response.json()
-                files = data.get('value', [])
-                all_files.extend([
-                    {
-                        'url': f"https://graph.microsoft.com/v1.0/sites/{site_id}/drive/items/{file['id']}/content",
-                        'name': file['name'],
-                        'size': file.get('size', 0),
-                        'last_modified': file.get('lastModifiedDateTime')
-                    }
-                    for file in files if file['name'].lower().endswith('.pdf')
-                ])
-                # Get the next page URL if it exists
-                files_url = data.get('@odata.nextLink')
-                if files_url:
-                    logger.info(f"Fetching next page of files. Total files so far: {len(all_files)}")
-            
-            logger.info(f"Retrieved {len(all_files)} PDF files from SharePoint folder")
-            return all_files
-            
-        except Exception as e:
-            logger.error(f"Error getting SharePoint files: {str(e)}")
-            raise
-
-    def download_file(self, file_url: str, local_path: Optional[str] = None) -> str:
+    def download_file(self, file_url: str, local_path: Optional[str] = None, file_name: Optional[str] = None) -> str:
         """
         Download a file from SharePoint.
-        
-        Args:
-            file_url (str): URL of the file.
-            local_path (str, optional): Local path to save the file.
-            
-        Returns:
-            str: Path to downloaded file.
         """
         try:
-            access_token = self._get_access_token()
+            access_token = _get_access_token()
             headers = {
                 'Authorization': f'Bearer {access_token}',
                 'Accept': 'application/octet-stream'
             }
-            
+
+            # Use original file name if provided, otherwise fallback
             if not local_path:
-                local_path = os.path.join('temp', os.path.basename(file_url))
+                if file_name:
+                    local_path = os.path.join('temp', file_name)
+                else:
+                    local_path = os.path.join('temp', os.path.basename(file_url))
                 os.makedirs(os.path.dirname(local_path), exist_ok=True)
-            
+
             response = requests.get(file_url, headers=headers, stream=True)
             response.raise_for_status()
-            
+
             with open(local_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
-            
-            # logger.info(f"File downloaded successfully: {local_path}")
+
+            logger.info(f"File downloaded successfully: {local_path}")
             return local_path
-            
+
         except Exception as e:
             logger.error(f"Error downloading SharePoint file: {str(e)}")
             raise
@@ -324,12 +195,11 @@ class SharePointService:
                 raise ValueError("Folder path cannot be empty")
 
             # Get access token and site ID
-            access_token = self._get_access_token()
-            site_id = self._get_site_id()
+            access_token = _get_access_token()
+            site_id = _get_site_id()
             
             # Log the upload attempt
             # logger.info(f"Attempting to upload file '{file_name}' to folder '{folder_path}'")
-            # logger.info(f"File size: {len(file_content)} bytes")
             
             headers = {
                 'Authorization': f'Bearer {access_token}',
@@ -343,9 +213,7 @@ class SharePointService:
             # Upload the file
             response = requests.put(upload_url, headers=headers, data=file_content)
             
-            # Log response details
             # logger.info(f"Upload response status: {response.status_code}")
-            # logger.info(f"Upload response headers: {response.headers}")
             
             # Check response status
             if response.status_code == 201 or response.status_code == 200:

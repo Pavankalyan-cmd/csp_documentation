@@ -1,4 +1,5 @@
-
+import os
+from PyPDF2 import PdfReader
 import json
 import logging
 logger = logging.getLogger(__name__)    
@@ -117,3 +118,31 @@ def _find_partial_matches(field_name: str, text: str) -> str:
         except Exception as e:
             logger.error(f"Error finding partial matches: {str(e)}")
             return None
+
+
+def extract_text(file_path: str, original_name: str = None) -> str:
+        """
+        Extract text from a PDF file.
+        """
+        try:
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"File not found: {file_path}")
+                
+            if not file_path.lower().endswith('.pdf'):
+                raise ValueError("Only PDF files are supported")
+                
+            text = ""
+            with open(file_path, 'rb') as file:
+                pdf_reader = PdfReader(file)
+                for page in pdf_reader.pages:
+                    text += page.extract_text() + "\n"
+            
+            if not text.strip():
+                raise ValueError("No text could be extracted from the PDF")
+                
+            filename = original_name
+            logger.info(f"Extracted text from document: {filename }")
+            return f"filename: {filename}\n\n{text}"
+        except Exception as e:
+            logger.error(f"Failed to extract text from document: {str(e)}")
+            raise

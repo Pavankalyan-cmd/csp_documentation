@@ -1,7 +1,6 @@
 import os
 import requests
 import json
-from PyPDF2 import PdfReader
 import google.generativeai as genai
 import logging
 from dotenv import load_dotenv
@@ -11,19 +10,15 @@ from typing import List, Dict, Optional
 import re
 from urllib.parse import urlparse
 
-from datetime import datetime, timedelta
-import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import time
 from queue import Queue
 import threading
 from functools import partial
-import tempfile
-import uuid
 from utils.file_utils import _get_temp_file_path, _get_url_type
 from utils.sharepoint_utils import _initialize_sharepoint, _get_sharepoint_files
 from utils.llm_utils import _generate_prompt
-from utils.llm_praser import _parse_response
+from utils.llm_praser import _parse_response,extract_text
 
 from services.openRouter import chat_with_openrouter
 
@@ -56,7 +51,6 @@ class DocumentProcessor:
         self.sharepoint_client = None
         
 
-
         # Initialize queues and thread pools
         self.document_queue = Queue()
         self.result_queue = Queue()
@@ -65,15 +59,6 @@ class DocumentProcessor:
         self.process_pool = ThreadPoolExecutor(max_workers=4)
         
         # Lock for thread-safe operations
-
-
-
-
-
-
-
-    
-    
 
 
     async def process_documents(self, url: str, template_id: str,model_id:str) -> List[Dict]:
@@ -158,10 +143,10 @@ class DocumentProcessor:
                 temp_file_path = _get_temp_file_path()
                 
                 # Download document
-                self.download_document(file['url'], temp_file_path)
+                local_path = self.download_document(file['url'], temp_file_path)
                 
                 # Extract text
-                text = self.extract_text(temp_file_path,file['name'])
+                text = extract_text(local_path,file['name'])
                 
          
 
@@ -218,61 +203,39 @@ class DocumentProcessor:
                 
                 self.document_queue.task_done()
 
-    def download_document(self, document_url: str, temp_file_path: str) -> None:
+    def download_document(self, document_url: str, temp_file_path: Optional[str] = None) -> str:
         """
         Download a document from various sources (PDF URL, SharePoint).
         
         Args:
             document_url (str): URL of the document
-            temp_file_path (str): Path to save the downloaded document
+            temp_file_path (str, optional): Path to save the downloaded document (if not provided, auto-generated)
+            
+        Returns:
+            str: Local path of the downloaded document
         """
         try:
             if "sharepoint.com" in document_url:
                 # Handle SharePoint URL
                 if not self.sharepoint_service:
                     raise ValueError("SharePoint service not configured")
-                self.sharepoint_service.download_file(document_url, temp_file_path)
+                local_path = self.sharepoint_service.download_file(document_url, temp_file_path)
+                return local_path
             else:
                 # Handle regular PDF URL
+                if not temp_file_path:
+                    temp_file_path = _get_temp_file_path()
+
                 response = requests.get(document_url, stream=True)
                 response.raise_for_status()
                 
                 with open(temp_file_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         f.write(chunk)
-                
+                return temp_file_path
         except Exception as e:
             logger.error(f"Error downloading document: {str(e)}")
             raise
-
-    def extract_text(self, file_path: str, original_name: str = None) -> str:
-        """
-        Extract text from a PDF file.
-        """
-        try:
-            if not os.path.exists(file_path):
-                raise FileNotFoundError(f"File not found: {file_path}")
-                
-            if not file_path.lower().endswith('.pdf'):
-                raise ValueError("Only PDF files are supported")
-                
-            text = ""
-            with open(file_path, 'rb') as file:
-                pdf_reader = PdfReader(file)
-                for page in pdf_reader.pages:
-                    text += page.extract_text() + "\n"
-            
-            if not text.strip():
-                raise ValueError("No text could be extracted from the PDF")
-                
-            filename = original_name
-            logger.info(f"Extracted text from document: {filename }")
-            return f"filename: {filename}\n\n{text}"
-        except Exception as e:
-            logger.error(f"Failed to extract text from document: {str(e)}")
-            raise
-
-   
 
    
 

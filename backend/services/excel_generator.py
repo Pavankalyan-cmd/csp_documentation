@@ -7,29 +7,59 @@ import re
 import time
 from services.metadata_storage import MetadataStorage
 import openpyxl
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from utils.log import logger
+            # Get template fields from template context
+from context.template_context import TemplateContext
+template_context = TemplateContext()
+metadata_storage = MetadataStorage()
 
 class ExcelGenerator:
     def __init__(self, output_dir: str = "output"):
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
-        self.logger = logging.getLogger(__name__)
-        self.metadata_storage = MetadataStorage()
         self.template_excel_files = {}  # Store Excel paths for each template
         self._load_existing_data()
+
+    def _get_template(self, template_id: str) -> Dict:
+        template = template_context.get_template(template_id)
+        if not template:
+            raise ValueError(f"No template found for template ID: {template_id}")
+        if not template.get("metadataFields"):
+            raise ValueError(f"No template fields found for template ID: {template_id}")
+        return template
+
+    def _sanitize_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        df.columns = [self._sanitize_column_name(col) for col in df.columns]
+        return df
+
+    def _format_excel(self, worksheet, df: pd.DataFrame):
+        for idx, col in enumerate(df.columns):
+            worksheet.column_dimensions[chr(65 + idx)].width = 30
+            for row in range(2, len(df) + 2):
+                cell = worksheet.cell(row=row, column=idx + 1)
+                cell.alignment = openpyxl.styles.Alignment(wrap_text=True, vertical="top")
+        header_fill = openpyxl.styles.PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+        header_font = openpyxl.styles.Font(color="FFFFFF", bold=True)
+        for cell in worksheet[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = openpyxl.styles.Alignment(wrap_text=True, vertical="center")
+
+    def _log_error(self, message: str, exc: Exception = None):
+        if exc:
+            logger.error(f"{message}: {str(exc)}")
+        else:
+            logger.error(message)
 
     def _load_existing_data(self):
         """Load existing data from both Excel and metadata storage"""
         try:
             # Initialize lists
-            self.metadata_list = []
+            self.metadata_list = [] 
             self.document_urls = []
             
             # Load from metadata storage
-            stored_metadata = self.metadata_storage.get_metadata()
+            stored_metadata = metadata_storage.get_metadata()
             if stored_metadata:
                 for doc in stored_metadata:
                     if 'File Name' in doc and 'Template ID' in doc:
@@ -56,7 +86,7 @@ class ExcelGenerator:
                             self.document_urls.append(doc.get('File Name', ''))
                         # self.logger.info(f"Loaded {len(df)} documents from Excel for template {template_id}")
         except Exception as e:
-            self.logger.error(f"Error loading existing data: {e}")
+            logger.error(f"Error loading existing data: {e}")
             # Initialize empty lists if there's an error
             self.metadata_list = []
             self.document_urls = []
@@ -115,48 +145,30 @@ class ExcelGenerator:
             if isinstance(metadata, dict) and metadata.get('File Name'):
                 file_name = str(metadata.get('File Name'))
             else:
-                # Extract file name from webUrl after Documents/
                 if 'sharepoint.com' in document_url.lower():
                     try:
                         file_name = document_url.split('Documents/')[-1]
                         file_name = file_name.replace('%20', ' ')
-                    except:
+                    except Exception:
                         file_name = os.path.basename(document_url)
                 else:
                     file_name = os.path.basename(document_url)
-            
-            # Get template fields from template context
-            from context.template_context import TemplateContext
-            template_context = TemplateContext()
-            template = template_context.get_template(template_id)
-            if not template:
-                logger.error(f"No template found for template ID: {template_id}")
-                raise ValueError(f"No template found for template ID: {template_id}")
-            
-            template_fields = template.get('metadataFields', [])
-            if not template_fields:
-                logger.error(f"No template fields found for template ID: {template_id}")
-                raise ValueError(f"No template fields found for template ID: {template_id}")
-            
-            # Create a new metadata dict with only template fields
-            cleaned_metadata = {}
-            for field in template_fields:
-                field_name = field.get('name')
-                if field_name in metadata:
-                    # Clean the value for Excel
-                    cleaned_value = self._clean_metadata_value(metadata[field_name])
-                    cleaned_metadata[field_name] = cleaned_value
-                else:
-                    cleaned_metadata[field_name] = "Not found"
-            
+
+            template = self._get_template(template_id)
+
+            cleaned_metadata = {
+                field["name"]: self._clean_metadata_value(metadata.get(field["name"], "Not found"))
+                for field in template["metadataFields"]
+            }
+
             # Add required fields
             cleaned_metadata['File Name'] = file_name
             cleaned_metadata['Template ID'] = template_id
             cleaned_metadata['Document URL'] = document_url 
-            
+
             # Add to metadata storage
-            self.metadata_storage.add_metadata(cleaned_metadata, document_url)
-            
+            metadata_storage.add_metadata(cleaned_metadata, document_url)
+
             # Always append new metadata
             self.metadata_list.append(cleaned_metadata)
             self.document_urls.append(file_name)
@@ -166,7 +178,7 @@ class ExcelGenerator:
             return self.generate_excel(template_id)
 
         except Exception as e:
-            logger.error(f"Error adding metadata: {str(e)}")
+            self._log_error("Error adding metadata", e)
             raise
 
     def _sanitize_column_name(self, column_name: str) -> str:
@@ -220,86 +232,32 @@ class ExcelGenerator:
     def generate_excel(self, template_id: str) -> Dict[str, str]:
         """Generate Excel file with all metadata for a specific template."""
         try:
-            # Create output directory if it doesn't exist
             os.makedirs(self.output_dir, exist_ok=True)
-            
-            # Get template-specific Excel path
             excel_path = self._get_excel_path(template_id)
-            
-            # Get template fields from template context
-            from context.template_context import TemplateContext
-            template_context = TemplateContext()
-
-            template = template_context.get_template(template_id)
-
-            if not template:
-                logger.error(f"No template found for template ID: {template_id}")
-                raise ValueError(f"No template found for template ID: {template_id}")
-            
-            template_fields = template.get('metadataFields', [])
-            if not template_fields:
-                logger.error(f"No template fields found for template ID: {template_id}")
-                raise ValueError(f"No template fields found for template ID: {template_id}")
-            
+            template = self._get_template(template_id)
+            template_fields = template["metadataFields"]
             # Filter metadata for this template
             template_metadata = [doc for doc in self.metadata_list if doc.get('Template ID') == template_id]
-            
             # Create DataFrame with only template fields
             df_data = []
-            
             for doc in template_metadata:
                 row = {}
                 for field in template_fields:
                     field_name = field.get('name')
                     row[field_name] = doc.get(field_name, "Not found")
-                # Add required fields
                 row['File Name'] = doc.get('File Name', '')
                 row['Template ID'] = doc.get('Template ID', '')
                 df_data.append(row)
-            
-            # Create DataFrame
             df = pd.DataFrame(df_data)
-            
-            # Sanitize column names
-            df.columns = [self._sanitize_column_name(col) for col in df.columns]
-            
-            # Create Excel writer
+            df = self._sanitize_dataframe(df)
             with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-                # Write DataFrame to Excel
                 df.to_excel(writer, sheet_name='Metadata', index=False)
-                
-                # Get workbook and worksheet
-                workbook = writer.book
                 worksheet = writer.sheets['Metadata']
-                
-                # Set column widths and enable text wrapping
-                for idx, col in enumerate(df.columns):
-                    # Set column width
-                    worksheet.column_dimensions[chr(65 + idx)].width = 30
-                    
-                    # Enable text wrapping for all cells in this column
-                    for row in range(2, len(df) + 2):  # Start from row 2 (after header)
-                        cell = worksheet.cell(row=row, column=idx + 1)
-                        cell.alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
-                
-                # Format header
-                header_fill = openpyxl.styles.PatternFill(start_color='4F81BD', end_color='4F81BD', fill_type='solid')
-                header_font = openpyxl.styles.Font(color='FFFFFF', bold=True)
-                
-                for cell in worksheet[1]:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='center')
-            
-            # logger.info(f"Excel file generated successfully: {excel_path}")
-            
-            # Upload Excel file to SharePoint and get URL
+                self._format_excel(worksheet, df)
             sharepoint_url = None
             try:
                 from services.sharepoint_service import SharePointService
                 sharepoint_service = SharePointService()
-                
-                # Get the folder path from the first document's URL
                 doc_url = None
                 if template_metadata and 'Document URL' in template_metadata[0]:
                     doc_url = template_metadata[0]['Document URL']
@@ -314,7 +272,6 @@ class ExcelGenerator:
                         if doc_url:
                             break
                 if doc_url:
-                    # logger.info(f"Processing document URL: {doc_url}")
                     if 'graph.microsoft.com' in doc_url and '/drive/root:/' in doc_url:
                         try:
                             full_path = doc_url.split('/drive/root:/')[1]
@@ -327,38 +284,35 @@ class ExcelGenerator:
                                 file_content = file.read()
                                 file_name = os.path.basename(excel_path)
                                 if not file_content:
-                                    logger.error("Excel file content is empty")
+                                    self._log_error("Excel file content is empty")
                                 else:
                                     try:
                                         sharepoint_url = sharepoint_service.upload_file(file_content, file_name, folder_path)
                                         if sharepoint_url:
                                             logger.info(f"Excel file uploaded successfully to SharePoint: {sharepoint_url}")
                                         else:
-                                            logger.error("Failed to get SharePoint URL after upload")
+                                            self._log_error("Failed to get SharePoint URL after upload")
                                     except Exception as upload_error:
-                                        logger.error(f"Error during SharePoint upload: {str(upload_error)}")
-                                        logger.error(f"Upload URL: {doc_url}")
-                                        logger.error(f"Target folder: {folder_path}")
-                                        logger.error(f"File name: {file_name}")
-                                        logger.error(f"File size: {len(file_content)} bytes")
+                                        self._log_error("Error during SharePoint upload", upload_error)
+                                        self._log_error(f"Upload URL: {doc_url}")
+                                        self._log_error(f"Target folder: {folder_path}")
+                                        self._log_error(f"File name: {file_name}")
+                                        self._log_error(f"File size: {len(file_content)} bytes")
                         except Exception as path_error:
-                            logger.error(f"Error extracting folder path from URL: {str(path_error)}")
-                            logger.error(f"Original URL: {doc_url}")
+                            self._log_error("Error extracting folder path from URL", path_error)
+                            self._log_error(f"Original URL: {doc_url}")
                     else:
-                        logger.error(f"Invalid Graph API URL: {doc_url}")
+                        self._log_error(f"Invalid Graph API URL: {doc_url}")
                 else:
-                    logger.error("No document URL found in template metadata")
+                    self._log_error("No document URL found in template metadata")
             except Exception as e:
-                logger.error(f"Error uploading Excel to SharePoint: {str(e)}")
-                # Continue even if upload fails
-            
+                self._log_error("Error uploading Excel to SharePoint", e)
             return {
                 'local_path': excel_path,
                 'sharepoint_url': sharepoint_url
             }
-            
         except Exception as e:
-            logger.error(f"Error generating Excel file: {str(e)}")
+            self._log_error("Error generating Excel file", e)
             raise
 
     def get_current_excel_path(self, template_id: str) -> str:

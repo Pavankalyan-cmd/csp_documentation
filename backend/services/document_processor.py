@@ -148,10 +148,7 @@ class DocumentProcessor:
                 fields = template.get('metadataFields', [])
                 fields = [{'name': 'filename', 'description': f'Known file name: {file["name"]}'}] + fields       
                 # Add file size and page count fields if available
-                file_size = os.path.getsize(temp_file_path)
-                with open(temp_file_path, 'rb') as f:
-                    pdf_reader = PdfReader(f)
-                    page_count = len(pdf_reader.pages)
+   
 
 
 
@@ -162,7 +159,7 @@ class DocumentProcessor:
                 logger.info(f"Sending file '{file['name']}' to LLM")
                 # Call LLM
 
-                response=chat_with_llm(prompt,model_id,file["name"],file_size=format_file_size(file_size), page_count=page_count)
+                response=chat_with_llm(prompt,model_id)
     
                 # Parse response
                 metadata = _parse_response(response)
